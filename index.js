@@ -1,7 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 require('dotenv').config()
-const { MongoClient, ServerApiVersion } = require('mongodb');
+const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const app = express()
 const port = process.env.PORT || 5000;
 
@@ -28,14 +28,34 @@ async function run() {
 
     const menuCollection = client.db('bistroDB').collection('menu')
     const reviewCollection = client.db('bistroDB').collection('reviews')
+    const cartCollection = client.db('bistroDB').collection('carts')
 
-    app.get('/menu', async(req, res) =>{
-        const menu = await menuCollection.find().toArray()
-        res.send(menu)
+    app.get('/menu', async (req, res) => {
+      const menu = await menuCollection.find().toArray()
+      res.send(menu)
     })
-    app.get('/reviews', async(req, res) =>{
-        const menu = await reviewCollection.find().toArray()
-        res.send(menu)
+    app.get('/reviews', async (req, res) => {
+      const menu = await reviewCollection.find().toArray()
+      res.send(menu)
+    })
+
+    // for cart
+    app.get('/carts', async(req, res) =>{
+      const email = req.query.email;
+      const query = {email:email}
+      const result = await cartCollection.find(query).toArray()
+      res.send(result)
+    })
+    app.post("/carts", async(req, res) =>{
+      const cartItem = req.body;
+      const result = await cartCollection.insertOne(cartItem);
+      res.send(result)
+    })
+    app.delete("/carts/:id", async(req, res) =>{
+      const id = req.params.id;
+      const query = {_id: new ObjectId(id)}
+      const result = await cartCollection.deleteOne(query);
+      res.send(result)
     })
 
 
@@ -51,10 +71,10 @@ async function run() {
 }
 run().catch(console.dir);
 
-app.get("/", (req, res) =>{
-    res.send("bistro boss is sleeping")
+app.get("/", (req, res) => {
+  res.send("bistro boss is sleeping")
 })
 
-app.listen(port, () =>{
-    console.log(`bistro boss is sleepin on port ${port}`);
+app.listen(port, () => {
+  console.log(`bistro boss is sleeping on port ${port}`);
 })
