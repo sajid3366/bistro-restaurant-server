@@ -188,21 +188,7 @@ async function run() {
     })
 
     // payment intent
-    // app.post('/create-payment-intent', async (req, res) => {
-    //   const { price } = req.body;
-    //   const amount = parseInt(price * 100)
-    //   console.log(amount);
-    //   const paymentIntent = await stripe.paymentIntents.create({
-    //     amount: amount,
-    //     currency: 'usd',
-    //     payment_method_types: [ "card"],
-    //   });
-
-    //   res.send({
-    //     clientSecret: paymentIntent.client_secret
-    //   });
-    // });
-
+    
     app.post("/create-payment-intent", async (req, res) => {
       const { price } = req.body;
       const amount = parseInt(price * 100)
@@ -247,6 +233,50 @@ async function run() {
     })
 
 
+    // for statistics or analaysis
+    app.get('/admin-stats', async(req, res) =>{
+      const user = await userCollection.estimatedDocumentCount();
+      const menuItems = await menuCollection.estimatedDocumentCount();
+      const orders = await paymentCollection.estimatedDocumentCount();
+      const result = await paymentCollection.aggregate([
+        {
+          $group:{
+            _id: null,
+            totalRevenue: {
+              $sum: '$price'
+            }
+          }
+        }
+      ]).toArray()
+      const revenue = result.length > 0 ? result[0].totalRevenue : 0;
+
+      res.send({
+        user,
+        menuItems,
+        orders,
+        revenue
+      })
+    })
+
+
+    // to use aggregate
+    app.get('/order-stats', async(req, res) =>{
+      const result = await paymentCollection.aggregate([
+        {
+          $unwind: '$menuItemIds'
+        },
+        {
+          $lookup:{
+            from: 'menu',
+            localField: 'menuItemIds',
+            foreignField: '_id',
+            as: 'menuItems'
+          }
+        }
+      ]).toArray()
+
+      res.send(result)
+    })
 
 
     // Send a ping to confirm a successful connection
