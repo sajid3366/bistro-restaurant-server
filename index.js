@@ -26,7 +26,7 @@ const client = new MongoClient(uri, {
 async function run() {
   try {
     // Connect the client to the server	(optional starting in v4.7)
-    await client.connect();
+    // await client.connect();
 
     const userCollection = client.db('bistroDB').collection('users')
     const menuCollection = client.db('bistroDB').collection('menu')
@@ -188,7 +188,7 @@ async function run() {
     })
 
     // payment intent
-    
+
     app.post("/create-payment-intent", async (req, res) => {
       const { price } = req.body;
       const amount = parseInt(price * 100)
@@ -201,7 +201,7 @@ async function run() {
         automatic_payment_methods: {
           enabled: true,
         },
-        
+
         // payment_method_types: [
         //   "card"
         // ],
@@ -212,35 +212,37 @@ async function run() {
       });
     });
 
-    app.get('/payments/:email', verifyToken, async(req, res) =>{
-      const query = {email: req.params.email}
-      if(req.params.email !== req.decoded.email){
-        return res.status(403).send({message: "forbidden access"});
+    app.get('/payments/:email', verifyToken, async (req, res) => {
+      const query = { email: req.params.email }
+      if (req.params.email !== req.decoded.email) {
+        return res.status(403).send({ message: "forbidden access" });
       }
       const result = await paymentCollection.find(query).toArray();
       res.send(result)
     })
 
-    app.post('/payments', async(req, res) =>{
+    app.post('/payments', async (req, res) => {
       const payment = req.body;
       const paymentResult = await paymentCollection.insertOne(payment);
-      const query = {_id:{
-        $in: payment.cartIds.map(id => new ObjectId(id))
-      }};
+      const query = {
+        _id: {
+          $in: payment.cartIds.map(id => new ObjectId(id))
+        }
+      };
       const deleteResult = await cartCollection.deleteMany(query)
       console.log('payment details', payment);
-      res.send({paymentResult, deleteResult});
+      res.send({ paymentResult, deleteResult });
     })
 
 
     // for statistics or analaysis
-    app.get('/admin-stats', async(req, res) =>{
+    app.get('/admin-stats', async (req, res) => {
       const user = await userCollection.estimatedDocumentCount();
       const menuItems = await menuCollection.estimatedDocumentCount();
       const orders = await paymentCollection.estimatedDocumentCount();
       const result = await paymentCollection.aggregate([
         {
-          $group:{
+          $group: {
             _id: null,
             totalRevenue: {
               $sum: '$price'
@@ -260,28 +262,45 @@ async function run() {
 
 
     // to use aggregate
-    app.get('/order-stats', async(req, res) =>{
+    app.get('/order-stats', verifyToken, verifyAdmin, async (req, res) => {
       const result = await paymentCollection.aggregate([
         {
           $unwind: '$menuItemIds'
         },
         {
-          $lookup:{
+          $lookup: {
             from: 'menu',
             localField: 'menuItemIds',
             foreignField: '_id',
             as: 'menuItems'
           }
-        }
+        },
+        {
+          $unwind: '$menuItems'
+        },
+        {
+          $group: {
+            _id: '$menuItems.category',
+            quantity: { $sum: 1 },
+            revenue: { $sum: '$menuItems.price' }
+          }
+        },
+        {
+          $project: {
+            _id: 0,
+            category: '$_id',
+            quantity: '$quantity',
+            revenue: '$revenue'
+          }
+        },
       ]).toArray()
 
       res.send(result)
     })
 
-
     // Send a ping to confirm a successful connection
-    await client.db("admin").command({ ping: 1 });
-    console.log("Pinged your deployment. You successfully connected to MongoDB!");
+    // await client.db("admin").command({ ping: 1 });
+    // console.log("Pinged your deployment. You successfully connected to MongoDB!");
   } finally {
     // Ensures that the client will close when you finish/error
     // await client.close();
@@ -289,10 +308,31 @@ async function run() {
 }
 run().catch(console.dir);
 
-app.get("/", (req, res) => {
+app.get("/health", (req, res) => {
   res.send("bistro boss is sleeping")
 })
 
-app.listen(port, () => {
-  console.log(`bistro boss is sleeping on port ${port}`);
+app.all('*', (req, res, next) => {
+  const error = new Error(`can not find ${req.originalUrl} on the server`);
+  error.status = 404;
+  next(error);
 })
+
+app.use((err, req, res, next) => {
+  res.status(err.status || 500).json({
+    message: err.message,
+    errors: err.errors
+  })
+})
+
+const main = async () => {
+  await client.connect()
+    .then(() => {
+      console.log('connected');
+    })
+  app.listen(port, () => {
+    console.log(`bistro boss is sleeping on port ${port}`);
+  })
+}
+
+main();
